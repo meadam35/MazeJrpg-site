@@ -73,6 +73,26 @@
     <script src="_content/nkast.Wasm.XR/js/XR.10.0.3.js"></script>
 
     <script>
+        // The D-pad as a bitmask read straight from the browser: 1 up, 2 down, 4 left, 8 right. The standard mapping
+        // puts the D-pad on buttons 12 to 15, which the XNA layer doesn't always report. Other mappings read as 0.
+        window.mazeReadDPad = function ()
+        {
+            var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (var i = 0; i < pads.length; i++)
+            {
+                var g = pads[i];
+                if (!g || !g.connected || g.mapping !== 'standard') continue;
+                var b = g.buttons;
+                var mask = 0;
+                if (b[12] && b[12].pressed) mask |= 1;
+                if (b[13] && b[13].pressed) mask |= 2;
+                if (b[14] && b[14].pressed) mask |= 4;
+                if (b[15] && b[15].pressed) mask |= 8;
+                return mask;
+            }
+            return 0;
+        };
+
         function tickJS()
         {
             window.theInstance.invokeMethod('TickDotNet');
