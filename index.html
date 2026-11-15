@@ -75,25 +75,101 @@
     <script src="_content/nkast.Wasm.XR/js/XR.10.0.3.js"></script>
 
     <script>
-        // The D-pad as a bitmask read straight from the browser: 1 up, 2 down, 4 left, 8 right. The standard mapping
-        // puts the D-pad on buttons 12 to 15, which the XNA layer doesn't always report. Other mappings read as 0.
+        // Opens the browser's file picker for one text file and resolves with its text, or null if none was chosen.
+        // Used by the developer's save replacement.
+        window.mazePickTextFile = function ()
+        {
+            return new Promise(function (resolve)
+            {
+                var input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json,application/json';
+                input.onchange = function ()
+                {
+                    var file = input.files && input.files[0];
+                    if (!file) { resolve(null); return; }
+                    var reader = new FileReader();
+                    reader.onload = function () { resolve(String(reader.result)); };
+                    reader.onerror = function () { resolve(null); };
+                    reader.readAsText(file);
+                };
+                input.click();
+            });
+        };
+
+        // On-screen touch buttons. Each button is held while at least one finger is on it, so two fingers can hold two buttons.
+        // Bits: 1 up, 2 down, 4 left, 8 right (the D-pad), 16 A, 32 B, 64 Menu (the same values as Input's Touch bits in C#).
+        var touchHeld = {};
+        var touchBits = { up: 1, down: 2, left: 4, right: 8, a: 16, b: 32, menu: 64 };
+
+        function touchMaskNow()
+        {
+            var mask = 0;
+            for (var name in touchBits)
+            {
+                if (touchHeld[name] && touchHeld[name].size > 0) mask |= touchBits[name];
+            }
+            return mask;
+        }
+
+        // The D-pad as a bitmask: the gamepad's D-pad (standard mapping) and the on-screen arrows, combined.
         window.mazeReadDPad = function ()
         {
+            var mask = touchMaskNow() & 15;
             var pads = navigator.getGamepads ? navigator.getGamepads() : [];
             for (var i = 0; i < pads.length; i++)
             {
                 var g = pads[i];
                 if (!g || !g.connected || g.mapping !== 'standard') continue;
                 var b = g.buttons;
-                var mask = 0;
                 if (b[12] && b[12].pressed) mask |= 1;
                 if (b[13] && b[13].pressed) mask |= 2;
                 if (b[14] && b[14].pressed) mask |= 4;
                 if (b[15] && b[15].pressed) mask |= 8;
-                return mask;
+                break;
             }
-            return 0;
+            return mask;
         };
+
+        // The on-screen A, B and Menu buttons as bits 16, 32 and 64.
+        window.mazeReadTouchButtons = function ()
+        {
+            return touchMaskNow() & 112;
+        };
+
+        // Connects the on-screen pad's buttons. The pad is hidden unless the screen is touch-only (CSS in css/app.css).
+        function wireTouchPad()
+        {
+            var pad = document.getElementById('touchPad');
+            if (!pad) return;
+            var buttons = pad.querySelectorAll('[data-touch]');
+            for (var i = 0; i < buttons.length; i++)
+            {
+                (function (btn)
+                {
+                    var name = btn.getAttribute('data-touch');
+                    var down = function (e)
+                    {
+                        e.preventDefault();
+                        if (!touchHeld[name]) touchHeld[name] = new Set();
+                        touchHeld[name].add(e.pointerId);
+                        btn.classList.add('tp-on');
+                        if (btn.setPointerCapture) btn.setPointerCapture(e.pointerId);
+                    };
+                    var up = function (e)
+                    {
+                        e.preventDefault();
+                        if (touchHeld[name]) touchHeld[name].delete(e.pointerId);
+                        if (!touchHeld[name] || touchHeld[name].size === 0) btn.classList.remove('tp-on');
+                    };
+                    btn.addEventListener('pointerdown', down);
+                    btn.addEventListener('pointerup', up);
+                    btn.addEventListener('pointercancel', up);
+                    btn.addEventListener('lostpointercapture', up);
+                    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+                })(buttons[i]);
+            }
+        }
 
         function tickJS()
         {
@@ -112,6 +188,8 @@
             canvas.height = holder.clientHeight;
             // disable context menu on right click
             canvas.addEventListener("contextmenu", e => e.preventDefault());
+            // on-screen buttons for touch screens
+            wireTouchPad();
 
             // begin game loop
             window.requestAnimationFrame(tickJS);
