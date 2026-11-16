@@ -30,6 +30,9 @@
         <a class="dismiss">x</a>
     </div>
 
+    <!-- Hidden text field for typing names on a phone. Focusing it opens the on-screen keyboard (see mazeTextBoxOpen). -->
+    <input id="mazeTextBox" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+           style="position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; font-size: 16px;" />
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>
     <script type="module">
         import { BrotliDecode } from './js/decode.min.js';
@@ -177,6 +180,41 @@
             window.requestAnimationFrame(tickJS);
         }
 
+        // The name entry's text field. A phone keyboard only opens for a text field focused by a tap, so while a name is
+        // being typed a tap on the game focuses this hidden field (see initRenderJS).
+        var textBox = document.getElementById('mazeTextBox');
+        var textBoxWanted = false;
+        var textBoxSubmitted = false;
+        textBox.addEventListener('keydown', function (e)
+        {
+            if (e.key === 'Enter') { e.preventDefault(); textBoxSubmitted = true; }
+        });
+        window.mazeTextBoxOpen = function (maxLength)
+        {
+            textBoxWanted = true;
+            textBoxSubmitted = false;
+            textBox.maxLength = maxLength;
+            textBox.value = '';
+        };
+        window.mazeTextBoxClose = function ()
+        {
+            textBoxWanted = false;
+            textBox.value = '';
+            textBox.blur();
+        };
+        // The text typed into the field while it has focus, or null when it doesn't (the game then reads the keys itself).
+        window.mazeTextBoxRead = function ()
+        {
+            return document.activeElement === textBox ? textBox.value : null;
+        };
+        // True once after Enter is pressed in the field.
+        window.mazeTextBoxSubmitted = function ()
+        {
+            var s = textBoxSubmitted;
+            textBoxSubmitted = false;
+            return s;
+        };
+
         window.initRenderJS = (instance) =>
         {
             window.theInstance = instance;
@@ -188,6 +226,8 @@
             canvas.height = holder.clientHeight;
             // disable context menu on right click
             canvas.addEventListener("contextmenu", e => e.preventDefault());
+            // a tap on the game opens the keyboard when a name is being typed
+            canvas.addEventListener("click", function () { if (textBoxWanted) textBox.focus(); });
             // on-screen buttons for touch screens
             wireTouchPad();
 
@@ -197,6 +237,8 @@
 
         window.addEventListener("keydown", function(event)
         {
+            // Keys typed into the name field are the field's own (Space included).
+            if (event.target === textBox) return;
             // Prevent Arrows Keys and Spacebar scrolling the outer page
             // when running inside an iframe. e.g: itch.io embedding.
             if ([32, 37, 38, 39, 40].indexOf(event.keyCode) > -1)
